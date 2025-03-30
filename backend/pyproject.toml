@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "backend"
+version = "0.1.0"
+description = ""
+authors = ["vivahub <vivahub01@gmail.com>"]
+readme = "README.md"
+packages = [{include = "backend", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["all"], version = "^0.115.12"}
+sqlalchemy = "^2.0.40"
+pydantic = "^2.11.1"
+pydantic-settings = "^2.8.1"
+pyjwt = {extras = ["crypto"], version = "^2.10.1"}
+alembic = "^1.15.2"
+asyncpg = "^0.30.0"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+secure-smtplib = "^0.1.1"
+phonenumbers = "^9.0.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

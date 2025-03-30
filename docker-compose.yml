@@ -1,0 +1,11 @@
+name: projectstars
+services:
+  postgres:
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_USER: ${DB_USER}
+    image: postgres:latest
+    ports:
+      - '${DB_PORT}:${DB_PORT}'
