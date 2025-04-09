@@ -1,6 +1,9 @@
 from datetime import timedelta
+from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2
+from fastapi.openapi.models import OAuthFlowPassword
+from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.service import (
     get_user_by_email, 
@@ -12,11 +15,13 @@ from src.auth.service import (
     request_password_reset,
     reset_password,
     verify_email,
-    oauth2_scheme,
+    oauth2_user_scheme,
 )
-from src.auth.schemas import UserCreate, UserResponse, Token, ResetPasswordRequest, ResetPasswordConfirm, UserVerifiedResponse
+from src.auth.schemas import UserCreate, UserResponse, Token, ResetPasswordRequest, ResetPasswordConfirm, UserVerifiedResponse, Role
 from src.db.database import get_async_session
-from src.config import settings
+from src.core.config import settings
+
+from fastapi.security.utils import get_authorization_scheme_param
 
 
 auth_router = APIRouter(tags=["Authentication"])
@@ -27,6 +32,11 @@ async def register(
     user: UserCreate,
     db_session: AsyncSession = Depends(get_async_session),
 ):
+    if user.role not in [Role.student, Role.teacher]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only student and teacher registration is allowed"
+        )
     existing_user = await get_user_by_email(db_session, user.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -62,23 +72,25 @@ async def login_for_access_token(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if db_user.role in [Role.admin, Role.superadmin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
     if not db_user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email not verified. Please check your email for verification link.",
         )
+    
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={
-            "email": db_user.email,
-        },
+        data={"email": db_user.email},
         expires_delta=access_token_expires
     )
     refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = create_refresh_token(
-        data={
-            "email": db_user.email,
-        },
+        data={"email": db_user.email},
         expires_delta=refresh_token_expires
     )
     return Token(

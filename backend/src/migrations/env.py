@@ -9,11 +9,12 @@ import os
 import sys
 
 sys.path.append(os.path.join(sys.path[0],'src'))
-from src.config import settings
+from src.core.config import settings
 
 # add models
 from src.auth.models import User
 from src.user.models import UserInfo
+from src.accelerator.models import Accelerator
 
 from src.db.database import Base
 

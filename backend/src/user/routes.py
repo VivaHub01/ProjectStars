@@ -4,14 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .service import get_user_info_by_user_id, update_or_create_profile
 from .schemas import UserInfoCreate, UserInfoResponse, UserInfoUpdate
 from src.db.database import get_async_session
-from src.auth.service import get_current_active_user, oauth2_scheme
+from src.auth.service import get_current_active_user, oauth2_user_scheme
 from src.auth.models import User
 
 
 user_router = APIRouter(prefix="/profile", tags=["User Profile"])
 
 
-@user_router.get( "", response_model=UserInfoResponse, dependencies=[Depends(oauth2_scheme)])
+@user_router.get( "/", response_model=UserInfoResponse, dependencies=[Depends(oauth2_user_scheme)])
 async def get_profile(
     db: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(get_current_active_user)
@@ -25,7 +25,7 @@ async def get_profile(
     return profile
 
 
-@user_router.post( "", response_model=UserInfoResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(oauth2_scheme)])
+@user_router.post( "/", response_model=UserInfoResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(oauth2_user_scheme)])
 async def create_profile(
     profile_data: UserInfoCreate,
     db: AsyncSession = Depends(get_async_session),
@@ -40,7 +40,7 @@ async def create_profile(
     return await update_or_create_profile(db, current_user.id, profile_data)
 
 
-@user_router.put( "", response_model=UserInfoResponse, dependencies=[Depends(oauth2_scheme)])
+@user_router.put( "/", response_model=UserInfoResponse, dependencies=[Depends(oauth2_user_scheme)])
 async def update_profile(
     profile_data: UserInfoUpdate,
     db: AsyncSession = Depends(get_async_session),
@@ -49,7 +49,7 @@ async def update_profile(
     return await update_or_create_profile(db, current_user.id, profile_data)
 
 
-@user_router.patch("", response_model=UserInfoResponse, dependencies=[Depends(oauth2_scheme)]) 
+@user_router.patch("/", response_model=UserInfoResponse, dependencies=[Depends(oauth2_user_scheme)]) 
 async def partial_update_profile(
     profile_data: UserInfoUpdate,
     db: AsyncSession = Depends(get_async_session),

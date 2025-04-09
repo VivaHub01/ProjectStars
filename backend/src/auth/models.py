@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import ForeignKey
+from src.auth.schemas import Role
 from src.db.database import Base
 
 
@@ -9,7 +9,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(nullable=False)
-    role: Mapped[str] = mapped_column(nullable=False)
+    role: Mapped[Role] = mapped_column(nullable=False)
     disabled: Mapped[bool] = mapped_column(default=True)
     reset_token: Mapped[str] = mapped_column(nullable=True)
     verification_token: Mapped[str] = mapped_column(nullable=True)

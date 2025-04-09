@@ -1,20 +1,26 @@
 import jwt
 from jwt.exceptions import InvalidTokenError
-from typing import Annotated
+from typing import Annotated, List
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from src.db.database import get_async_session
 from src.auth.models import User
-from src.config import settings
+from src.auth.schemas import Role
+from src.core.config import settings
 import smtplib
 from email.mime.text import MIMEText
 
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+oauth2_user_scheme = OAuth2PasswordBearer(
+    tokenUrl="/auth/login",
+    scheme_name="UserAuth",
+    scopes={"user": "Regular user access"},
+)
 
 
 def verify_password(plain_password, hashed_password):
@@ -114,7 +120,18 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+        
+    scopes = []
+    if data.get("role") in [Role.admin, Role.superadmin]:
+        scopes = ["admin"]
+    else:
+        scopes = ["user"]
+    
+    to_encode.update({
+        "exp": expire,
+        "role": data.get("role"),
+        "scopes": scopes
+    })
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
@@ -131,7 +148,8 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    security_scopes: SecurityScopes,
+    token: str = Depends(oauth2_user_scheme),
     db_session: AsyncSession = Depends(get_async_session)
 ) -> User:
     credentials_exception = HTTPException(
@@ -144,6 +162,14 @@ async def get_current_user(
         email: str = payload.get("email")
         if email is None:
             raise credentials_exception
+        
+        token_scopes = payload.get("scopes", [])
+        for scope in security_scopes.scopes:
+            if scope not in token_scopes:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not enough permissions",
+                )
     except InvalidTokenError:
         raise credentials_exception
     
@@ -230,3 +256,38 @@ def send_reset_email(email: str, token: str):
         server.starttls()
         server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
         server.sendmail(settings.EMAIL_FROM, [email], msg.as_string())
+
+
+class RoleChecker:
+    def __init__(self, allowed_roles: List[Role]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, user: User = Depends(get_current_active_user)):
+        if user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Operation not permitted for your role"
+            )
+        return user
+    
+
+allow_superadmin = RoleChecker([Role.superadmin])
+allow_admin = RoleChecker([Role.superadmin, Role.admin])
+allow_teacher = RoleChecker([Role.superadmin, Role.admin, Role.teacher])
+allow_student = RoleChecker([Role.superadmin, Role.admin, Role.teacher, Role.student])
+
+
+async def get_user_for_role_assignment(
+    email: str,
+    current_user: User = Depends(get_current_active_user),
+    db_session: AsyncSession = Depends(get_async_session)
+) -> User:
+    if current_user.role != Role.superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superadmin can assign admin roles"
+        )
+    user = await get_user_by_email(db_session, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user

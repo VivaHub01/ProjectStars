@@ -1,9 +1,17 @@
 from pydantic import BaseModel, EmailStr
+from enum import Enum
+
+
+class Role(str, Enum):
+    student = "student"
+    teacher = "teacher"
+    admin = "admin"
+    superadmin = "superadmin"
 
 
 class UserOut(BaseModel):
     email: EmailStr
-    role: str
+    role: Role
     disabled: bool
 
 
@@ -14,12 +22,12 @@ class UserInDB(UserOut):
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: str
+    role: Role
 
 
 class UserResponse(BaseModel):
     email: EmailStr
-    role: str
+    role: Role
     is_verified: bool
     disabled: bool
     
