@@ -1,0 +1,255 @@
+* {
+    margin: 0;
+    padding: 0;
+    font-family: 'ABeeZee', sans-serif;
+    box-sizing: border-box;
+}
+
+a {
+    text-decoration: none;
+    color: black;
+}
+
+body {
+    background-color: white;
+    height: 100vh;
+}
+
+.container {
+    border: 1px solid black;
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: row;
+}
+
+/* Навигация */
+.nav {
+    width: 200px;
+    height: 100vh;
+    position: relative;
+    background: white;
+    z-index: 100;
+    transition: transform 0.3s ease;
+}
+
+.logo {
+    border-bottom: 1px solid gray;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    justify-content: space-between;
+}
+
+.logo a {
+    font-size: 16px;
+    color: rgba(103, 31, 219, 1);
+}
+
+.logo img {
+    width: 28px;
+    height: 28px;
+    margin-right: 45px;
+    margin-bottom: 5px;
+}
+
+.mobile-menu-btn {
+    display: none;
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 101;
+}
+
+.navigation {
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.navigation a {
+    padding: 12px 15px;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.navigation a:hover {
+    background: rgba(103, 31, 219, 0.1);
+}
+
+/* Основной контент */
+.information {
+    flex: 1;
+    border-left: 1px solid black;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.search {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 15px;
+}
+
+.search input {
+    height: 40px;
+    padding: 0 15px;
+    width: 30%;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 200px;
+}
+
+.edit-btn {
+    background: linear-gradient(0.25turn, rgba(213, 31, 219, 0.6), rgba(102, 20, 142, 0.6), rgba(55, 17, 117, 0.6));
+    color: white;
+    border: none;
+    border-radius: 50%;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-right: auto;
+}
+
+.profile-link img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.editing {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.editing p {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.save-btn {
+    background: rgba(223, 255, 249, 1);
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: rgba(35, 50, 28, 1);
+    font-size: 14px;
+}
+
+.profile {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+}
+
+.information_main, .information_additional {
+    border: 1px solid black;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.information_main {
+    flex: 1;
+}
+
+.information_additional {
+    flex: 1;
+}
+
+.information_main img {
+    width: 150px;
+    height: 150px;
+    background: rgba(217, 217, 217, 1);
+    align-self: center;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.information_main input, .information_additional input {
+    width: 100%;
+    height: 40px;
+    padding: 0 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.information_additional p {
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+/* Медиазапросы для адаптивности */
+@media (max-width: 992px) {
+    .profile {
+        flex-direction: column;
+    }
+    
+    .information_main, .information_additional {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .nav {
+        position: fixed;
+        transform: translateX(-100%);
+    }
+    
+    .nav.active {
+        transform: translateX(0);
+    }
+    
+    .mobile-menu-btn {
+        display: block;
+    }
+    
+    .information {
+        margin-left: 0;
+    }
+    
+    .search {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .search input {
+        width: 100%;
+    }
+    
+    .edit-btn {
+        align-self: flex-end;
+        margin-right: 0%;
+    }
+}
+
+@media (max-width: 576px) {
+    .editing {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .save-btn {
+        align-self: flex-end;
+    }
+    
+    .information_main img {
+        width: 120px;
+        height: 120px;
+    }
+}

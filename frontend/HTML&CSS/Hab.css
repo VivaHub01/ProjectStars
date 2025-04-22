@@ -1,0 +1,151 @@
+*{
+    margin: 0;
+    padding: 0;
+    font-family: 'poppins', sans-serif;
+    box-sizing: border-box;
+}
+a{
+    text-decoration: none;
+    color: black;
+}
+img{
+    cursor: pointer;
+}
+.flex-div{
+    display: flex;
+    align-items:baseline;
+    position: relative;
+    border-left: 15%;
+    left: 15%;
+    width: 85%;
+    height: 6vh;
+    border: 1px solid black;
+    justify-content: space-between;
+}
+logo{
+    position: fixed;
+    border: 1px solid red;
+    padding-left: 2%;
+    height: 3vh;
+    width: 15%;
+    min-height: 3vh;
+    min-width: 13vh;
+    padding-top: 3px;
+}
+.sidebar{
+    background: #fff;
+    width: 15%;
+    height: 60vh;
+    top: 3%;
+    min-width: 13vh;
+    min-height: 20vh;
+    position: fixed;
+    padding-top: 1%;
+    padding-left: 2%;
+    border: 1px solid black;
+}
+.positions a{
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    width: fit-content;
+    flex-wrap: wrap;
+}
+
+nav{
+    background: #fff;
+    position: relative;
+    min-height: 6vh;
+    border: 1px solid black;
+    width: 50%;
+}
+
+.nav-left{
+    top: 1vh;
+    border: 1px solid #ccc;
+    width: auto;
+    height: auto;
+    margin-right: 15px;
+    padding: 8px 12px;
+    border-radius: 25px;
+    flex-basis: 20%;
+    left: 3%;
+}
+.nav-lef input{
+    width: 50px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+}
+.nav-middle{
+    top: 1vh;
+    width: 10%;
+    height: auto;
+    width: auto;
+    border: 1px solid black;
+    border-radius: 20px;
+    margin-right: 55%;
+    padding: 8px 12px;
+    left: 0;
+}
+.nav-right{
+    top: 1vh;
+    width: auto;
+    border: 1px solid black;
+    border-radius: 20px;
+    margin-right: 15px;
+    padding: 8px 12px;
+    flex-basis: content;
+    left: 0;
+    height: auto;
+}
+
+.profile{
+    display: flex;
+    position: relative;
+    left: 15%;
+    align-items: baseline;
+    width: 85%;
+    justify-content: space-between;
+    border: 1px solid black;
+    height: 5vh;
+}
+
+.text{
+    width: auto;
+    height: auto;
+    flex-basis: 20%;
+    left: 3%;
+    border: 0px;
+    top: 2vh;
+
+}
+
+/* @media (max-width: 900px) {
+    .menu-icon{
+        display:none;
+    }
+    .sidebar{
+        display: none;
+    }
+    .container, .large-container{
+        padding-left: 5%;
+        padding-right: 5%;
+    }
+    .nav-right img{
+        display: none;
+    }
+    .nav-right .user-icon{
+        display: block;
+        width: 30px;
+    }
+    .nav-middle .search-box input{
+        width: 100px;
+    }
+    .nav-middle .mic-icon{
+        display: none;
+    }
+    .logo{
+        width: 90px;
+    }
+} */
