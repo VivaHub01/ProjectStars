@@ -74,22 +74,13 @@ nav {
     color: rgba(103, 31, 219, 1);
 }
 
-#sidebar a, #sidebar .dropdown-btn, #sidebar .logo{
+#sidebar a, #sidebar .logo{
     border-radius: .5em;
     padding: .85em;
     text-decoration: none;
     display: flex;
     align-items: center;
     gap: 1em;
-}
-
-.dropdown-btn{
-    width:100%;
-    text-align: left;
-    background: none;
-    border: none;
-    font: inherit;
-    cursor: pointer;
 }
 
 #sidebar svg{
@@ -103,31 +94,6 @@ nav {
 
 #sidebar a:hover, #sidebar .dropdown-btn:hover{
     background-color:  lightgray;
-}
-
-#sidebar .sub-menu{
-    display: grid;
-    grid-template-rows: 1fr;
-    transition: 300ms ease-in-out;
-    > div{
-        overflow:hidden;
-    }
-}
-
-#sidebar .sub-menu.show{
-    grid-template-rows: 0fr;
-}
-
-.dropdown-btn svg{
-    transition: 200ms ease;
-}
-
-.rotate svg:last-child{
-    rotate:-180deg;
-}
-
-#sidebar .sub-menu{
-    padding-left: 2em;
 }
 
 #toggle-btn{
