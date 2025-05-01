@@ -15,6 +15,8 @@ from src.core.config import settings
 from src.auth.models import User
 from src.user.models import UserInfo
 from src.accelerator.models import Accelerator
+from src.project.models import Project
+from src.project.project_research.models import ResearchProject, ResearchQuestion, ResearchAnswer
 
 from src.db.database import Base
 

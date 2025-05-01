@@ -1,0 +1,22 @@
+name: projectstars-frontend
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    environment:
+      - REACT_APP_API_URL=http://backend:${APP_PORT}
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    name: app-network
+    external: true

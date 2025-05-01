@@ -16,3 +16,10 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(default=False)
 
     profile: Mapped["UserInfo"] = relationship("UserInfo", back_populates="user", uselist=False, cascade="all, delete-orphan")
+
+    projects: Mapped[list["Project"]] = relationship(
+        "Project", 
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="dynamic"
+    )

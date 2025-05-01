@@ -4,11 +4,11 @@ from typing import ClassVar
 
 
 class Settings(BaseSettings):
-    DB_HOST: str = Field(..., env="DB_HOST")
-    DB_NAME: str = Field(..., env="DB_NAME")
-    DB_USER: str = Field(..., env="DB_USER")
-    DB_PASS: str = Field(..., env="DB_PASS")
-    DB_PORT: int = Field(..., env="DB_PORT")
+    DB_HOST: str = Field(env="DB_HOST")
+    DB_NAME: str = Field(env="DB_NAME")
+    DB_USER: str = Field(env="DB_USER")
+    DB_PASS: str = Field(env="DB_PASS")
+    DB_PORT: int = Field(env="DB_PORT")
     
     SECRET_KEY: ClassVar[str] = '09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7'
     REFRESH_SECRET_KEY: ClassVar[str] = '09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7'

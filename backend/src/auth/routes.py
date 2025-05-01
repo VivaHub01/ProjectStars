@@ -21,8 +21,6 @@ from src.auth.schemas import UserCreate, UserResponse, Token, ResetPasswordReque
 from src.db.database import get_async_session
 from src.core.config import settings
 
-from fastapi.security.utils import get_authorization_scheme_param
-
 
 auth_router = APIRouter(tags=["Authentication"])
 
