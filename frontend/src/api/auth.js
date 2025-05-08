@@ -1,37 +1,44 @@
-import api from "./axios";
+import api from './axios';
 
-export const authAPI = {
-  register: async (email, password, role) => {
-    return api.post("/auth/register", { email, password, role });
-  },
-
-  verifyEmail: async (token) => {
-    return api.get(`/auth/verify-email?token=${token}`);
-  },
-
-  login: async (email, password) => {
-    const response = await api.post("/auth/login", {
-      username: email,
+export const register = async (email, password, role) => {
+  try {
+    const response = await api.post('/register', {
+      email, 
       password,
+      role 
     });
-    localStorage.setItem("access_token", response.data.access_token);
-    localStorage.setItem("refresh_token", response.data.refresh_token);
-    return response;
-  },
-
-  requestPasswordReset: async (email) => {
-    return api.post("/auth/request-password-reset", { email });
-  },
-
-  resetPassword: async (token, newPassword) => {
-    return api.post("/auth/reset-password", {
-      token,
-      new_password: newPassword,
-    });
-  },
-
-  logout: () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+    return response.data;
+  } catch (err) {
+    console.error('Registration error:', err.response); // Добавьте логирование
+    throw err;
   }
+};
+
+export const login = async (email, password) => {
+  const response = await api.post('/login', 
+    `username=${email}&password=${password}&grant_type=password`,
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    }
+  );
+  return response.data;
+};
+
+export const verifyEmail = async (token) => {
+  return api.get(`/verify-email?token=${token}`);
+};
+
+export const requestPasswordReset = async (email) => {
+  return api.post('/request-password-reset', { email });
+};
+
+export const resetPassword = async (token, newPassword) => {
+  return api.post('/reset-password', { token, new_password: newPassword });
+};
+
+export const logout = () => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
 };

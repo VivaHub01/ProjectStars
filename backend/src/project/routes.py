@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.project.service import (
@@ -10,59 +10,78 @@ from src.project.service import (
 )
 from src.project.schemas import ProjectCreate, ProjectResponse
 from src.db.database import get_async_session
+from src.auth.service import get_current_active_user, oauth2_user_scheme
+from src.auth.models import User
 
 
 project_router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@project_router.post("/", response_model=ProjectResponse)
+@project_router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(oauth2_user_scheme)])
 async def create_new_project(
     project: ProjectCreate,
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
         return await create_project(db, project)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
-@project_router.get("/", response_model=List[ProjectResponse])
+@project_router.get("/", response_model=List[ProjectResponse], dependencies=[Depends(oauth2_user_scheme)])
 async def read_projects(
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     return await get_projects(db, skip=skip, limit=limit)
 
 
-@project_router.get("/{project_id}", response_model=ProjectResponse)
+@project_router.get("/{project_id}", response_model=ProjectResponse, dependencies=[Depends(oauth2_user_scheme)])
 async def read_single_project(
     project_id: int,
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     project = await get_project(db, project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
     return project
 
 
-@project_router.put("/{project_id}", response_model=ProjectResponse)
+@project_router.put("/{project_id}", response_model=ProjectResponse, dependencies=[Depends(oauth2_user_scheme)])
 async def update_existing_project(
     project_id: int,
     project: ProjectCreate,
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     db_project = await update_project(db, project_id, project)
     if db_project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
     return db_project
 
 
-@project_router.delete("/{project_id}")
+@project_router.delete("/{project_id}", dependencies=[Depends(oauth2_user_scheme)])
 async def remove_project(
     project_id: int,
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    current_user: User = Depends(get_current_active_user)
 ):
     if not await delete_project(db, project_id):
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
     return {"message": "Project deleted successfully"}

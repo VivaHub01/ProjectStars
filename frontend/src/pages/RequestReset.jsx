@@ -1,35 +1,53 @@
 import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { requestPasswordReset } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import '../styles/base.css';
 import '../styles/layout.css';
 import '../styles/auth.css';
 
-const Login = () => {
+const RequestReset = () => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     
-    const result = await login(email, password);
-    if (result.success) {
-      navigate('/dashboard');
-    } else {
-      setError(result.error);
+    try {
+      await requestPasswordReset(email);
+      setSuccess(true);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Request failed');
     }
   };
+
+  if (success) {
+    return (
+      <Layout>
+        <div className="auth-page">
+          <div className="auth-form">
+            <h2>Check Your Email</h2>
+            <p>If an account exists with this email, you will receive a password reset link.</p>
+            <button 
+              onClick={() => navigate('/login')} 
+              className="submit-btn"
+            >
+              Back to Login
+            </button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
       <div className="auth-page">
         <form onSubmit={handleSubmit} className="auth-form">
-          <h2>Login</h2>
+          <h2>Reset Password</h2>
           {error && <div className="error-message">{error}</div>}
           <div className="form-group">
             <label htmlFor="email">Email</label>
@@ -41,23 +59,10 @@ const Login = () => {
               required
             />
           </div>
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <button type="submit" className="submit-btn">Login</button>
+          <button type="submit" className="submit-btn">Request Reset</button>
           <div className="form-footer">
             <p>
-              Don't have an account? <a href="/register">Register</a>
-            </p>
-            <p>
-              Forgot password? <a href="/request-reset">Reset it</a>
+              Remember your password? <a href="/login">Login</a>
             </p>
           </div>
         </form>
@@ -66,4 +71,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default RequestReset;
