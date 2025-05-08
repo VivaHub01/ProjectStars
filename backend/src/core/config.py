@@ -23,10 +23,19 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = Field(..., env="SMTP_PASSWORD")
     EMAIL_FROM: str = Field(..., env="EMAIL_FROM")
 
+    APP_PORT: int = Field(..., env="APP_PORT")
+    APP_HOST: str = Field(..., env="APP_HOST")
+
+    FRONTEND_URL: str = Field(..., env="FRONTEND_URL")
+
     @property
     def DATABASE_URL_asyncpg(self):
         return f'postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}'
 
-    model_config = SettingsConfigDict(env_file='.env')
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 settings = Settings()

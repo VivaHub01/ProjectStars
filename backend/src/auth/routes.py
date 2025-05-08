@@ -14,7 +14,8 @@ from src.auth.service import (
     verify_refresh_token,
     request_password_reset,
     reset_password,
-    verify_email,
+    verify_email_with_code,
+    resend_verification_code,
     oauth2_user_scheme,
 )
 from src.auth.schemas import UserCreate, UserResponse, Token, ResetPasswordRequest, ResetPasswordConfirm, UserVerifiedResponse, Role
@@ -47,15 +48,24 @@ async def register(
     return new_user
 
 
-@auth_router.get('/verify-email', response_model=UserVerifiedResponse)
-async def verify_email_endpoint(
-    token: str,
+@auth_router.post('/verify-email', response_model=UserVerifiedResponse)
+async def verify_email_with_code_endpoint(
+    code: str,
     db_session: AsyncSession = Depends(get_async_session),
 ):
-    user = await verify_email(db_session, token)
+    user = await verify_email_with_code(db_session, code)
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
     return {"message": "Email successfully verified"}
+
+
+@auth_router.post('/resend-verification')
+async def resend_verification_code_endpoint(
+    email: str,
+    db_session: AsyncSession = Depends(get_async_session),
+):
+    await resend_verification_code(db_session, email)
+    return {"message": "Verification code has been resent"}
 
 
 @auth_router.post('/login', response_model=Token)

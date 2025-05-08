@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import datetime
 from src.auth.schemas import Role
 from src.db.database import Base
 
@@ -14,6 +15,8 @@ class User(Base):
     reset_token: Mapped[str] = mapped_column(nullable=True)
     verification_token: Mapped[str] = mapped_column(nullable=True)
     is_verified: Mapped[bool] = mapped_column(default=False)
+    verification_code: Mapped[str] = mapped_column(nullable=True)
+    verification_code_expires: Mapped[datetime] = mapped_column(nullable=True)
 
     profile: Mapped["UserInfo"] = relationship("UserInfo", back_populates="user", uselist=False, cascade="all, delete-orphan")
 

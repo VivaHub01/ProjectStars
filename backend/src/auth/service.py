@@ -1,5 +1,7 @@
 import jwt
 from jwt.exceptions import InvalidTokenError
+import random
+import string
 from typing import Annotated, List
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
@@ -31,6 +33,19 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 
+def generate_verification_code(length=5):
+    """Генерация кода вида A1B2C"""
+    letters = string.ascii_uppercase
+    digits = string.digits
+    code = []
+    for i in range(length):
+        if i % 2 == 0:
+            code.append(random.choice(letters))
+        else:
+            code.append(random.choice(digits))
+    return ''.join(code)
+
+
 async def get_user_by_email(db_session: AsyncSession, email: str) -> User:
     query = select(User).filter(User.email == email)
     result = await db_session.execute(query)
@@ -38,11 +53,14 @@ async def get_user_by_email(db_session: AsyncSession, email: str) -> User:
     return user
 
 
-def send_verification_email(email: str, token: str):
-    verification_link = f"http://127.0.0.1:8000/auth/verify-email?token={token}"
+def send_verification_email(email: str, code: str):
+    verification_link = f"{settings.FRONTEND_URL}/verify-email?email={email}"
     
-    msg = MIMEText(f'Please click the following link to verify your email: {verification_link}')
-    msg['Subject'] = 'Email Verification'
+    msg = MIMEText(
+        f'Your verification code: {code}\n\n'
+        f'Or click this link to verify: {verification_link}'
+    )
+    msg['Subject'] = 'Email Verification Code'
     msg['From'] = settings.EMAIL_FROM
     msg['To'] = email
 
@@ -54,13 +72,15 @@ def send_verification_email(email: str, token: str):
 
 async def create_user(db_session: AsyncSession, email: str, password: str, role: str) -> User:
     hashed_password = get_password_hash(password)
-    verification_token = create_access_token(data={"email": email}, expires_delta=timedelta(days=1))
+    verification_code = generate_verification_code()
+    code_expires = datetime.now(timezone.utc) + timedelta(days=1)
     
     new_user = User(
         email=email,
         hashed_password=hashed_password,
         role=role,
-        verification_token=verification_token,
+        verification_code=verification_code,
+        verification_code_expires=code_expires,
         disabled=True,
         is_verified=False
     )
@@ -68,40 +88,58 @@ async def create_user(db_session: AsyncSession, email: str, password: str, role:
     await db_session.commit()
     await db_session.refresh(new_user)
     
-    send_verification_email(email, verification_token)
+    send_verification_email(email, verification_code)
     return new_user
 
 
-async def verify_email(db_session: AsyncSession, token: str) -> User:
+async def verify_email_with_code(db_session: AsyncSession, code: str) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid verification token",
+        detail="Invalid verification code",
     )
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("email")
-        if email is None:
-            raise credentials_exception
-    except InvalidTokenError:
-        raise credentials_exception
-
-    user = await get_user_by_email(db_session, email)
+    
+    query = select(User).filter(User.verification_code == code)
+    result = await db_session.execute(query)
+    user = result.scalars().first()
+    
     if user is None:
         raise credentials_exception
     
-    if user.verification_token != token:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    if datetime.now(timezone.utc) > user.verification_code_expires:
+        raise HTTPException(status_code=400, detail="Verification code expired")
     
     if user.is_verified:
         raise HTTPException(status_code=400, detail="Email already verified")
     
     user.is_verified = True
     user.disabled = False
-    user.verification_token = None
+    user.verification_code = None
+    user.verification_code_expires = None
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
     
+    return user
+
+
+async def resend_verification_code(db_session: AsyncSession, email: str) -> User:
+    user = await get_user_by_email(db_session, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="Email already verified")
+    
+    verification_code = generate_verification_code()
+    code_expires = datetime.now(timezone.utc) + timedelta(days=1)
+    
+    user.verification_code = verification_code
+    user.verification_code_expires = code_expires
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    
+    send_verification_email(email, verification_code)
     return user
 
 
