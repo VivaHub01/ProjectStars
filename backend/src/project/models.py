@@ -16,7 +16,10 @@ class Project(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     user: Mapped["User"] = relationship(back_populates="projects")
     
-    accelerator_id: Mapped[int] = mapped_column(ForeignKey("accelerators.id"), nullable=True)
+    accelerator_id: Mapped[int] = mapped_column(
+        ForeignKey("accelerators.id"), 
+        nullable=True
+    )
     accelerator: Mapped["Accelerator"] = relationship(back_populates="projects")
 
     research_project: Mapped["ResearchProject"] = relationship(
@@ -25,3 +28,6 @@ class Project(Base):
         uselist=False,
         cascade="all, delete-orphan"
     )
+
+    def __repr__(self):
+        return f"Project(id={self.id}, name={self.name}, type={self.type})"

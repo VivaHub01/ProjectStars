@@ -12,44 +12,49 @@ def setup_openapi_config(app: FastAPI):
             routes=app.routes,
         )
         
-        if "components" not in openapi_schema:
-            openapi_schema["components"] = {}
+        openapi_schema.setdefault("components", {})
         
         openapi_schema["components"]["securitySchemes"] = {
             "UserAuth": {
                 "type": "oauth2",
                 "flows": {
                     "password": {
-                        "tokenUrl": "/auth/login",
+                        "tokenUrl": "/login",
                         "scopes": {
                             "user": "Regular user access"
                         }
                     }
-                }
+                },
+                "description": "Standard user authentication"
             },
             "AdminAuth": {
                 "type": "oauth2",
                 "flows": {
                     "password": {
-                        "tokenUrl": "/auth/admin/login",
+                        "tokenUrl": "/admin/login",
                         "scopes": {
                             "admin": "Admin access"
                         }
                     }
-                }
+                },
+                "description": "Admin-level authentication"
             }
         }
         
-        if "paths" not in openapi_schema:
-            openapi_schema["paths"] = {}
+        openapi_schema.setdefault("security", [])
         
-        for path, path_item in openapi_schema["paths"].items():
-            for method, operation in path_item.items():
-                if "tags" in operation:
-                    if any("admin" in tag.lower() for tag in operation["tags"]):
-                        operation["security"] = [{"AdminAuth": ["admin"]}]
-                    elif any("auth" in tag.lower() for tag in operation["tags"]):
-                        operation["security"] = [{"UserAuth": ["user"]}]
+        for path_item in openapi_schema.get("paths", {}).values():
+            for operation in path_item.values():
+                tags = operation.get("tags", [])
+                
+                if any("admin" in tag.lower() for tag in tags):
+                    operation["security"] = [{"AdminAuth": ["admin"]}]
+                elif any(tag.lower() in ("auth", "authentication") for tag in tags):
+                    operation["security"] = [{"UserAuth": ["user"]}]
+                
+                if "superadmin" in operation.get("summary", "").lower():
+                    operation.setdefault("description", "")
+                    operation["description"] += "\n\n**Requires superadmin privileges**"
         
         app.openapi_schema = openapi_schema
         return app.openapi_schema

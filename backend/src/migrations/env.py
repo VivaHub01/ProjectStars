@@ -12,7 +12,7 @@ sys.path.append(os.path.join(sys.path[0],'src'))
 from src.core.config import settings
 
 # add models
-from src.auth.models import User
+from src.auth.models import User, VerificationToken, PasswordResetToken
 from src.user.models import UserInfo
 from src.accelerator.models import Accelerator
 from src.project.models import Project

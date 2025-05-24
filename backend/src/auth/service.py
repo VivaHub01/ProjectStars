@@ -1,331 +1,372 @@
 import jwt
-from jwt.exceptions import InvalidTokenError
-import random
-import string
-from typing import Annotated, List
+import uuid
+import bcrypt
+import aiosmtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from typing import Annotated
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, SecurityScopes
-from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import delete, update
 from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.database import get_async_session
-from src.auth.models import User
-from src.auth.schemas import Role
+from src.auth.schemas import Role, TokenData, UserBase, UserCreate, UserInDB
+from src.auth.models import User, VerificationToken, PasswordResetToken
 from src.core.config import settings
-import smtplib
-from email.mime.text import MIMEText
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_user_scheme = OAuth2PasswordBearer(
-    tokenUrl="/auth/login",
-    scheme_name="UserAuth",
-    scopes={"user": "Regular user access"},
-)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+class SecurityService:
+    @staticmethod
+    def get_password_hash(password: str, cost: int = 12) -> str:
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(cost)).decode('utf-8')
 
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-
-def generate_verification_code(length=5):
-    """Генерация кода вида A1B2C"""
-    letters = string.ascii_uppercase
-    digits = string.digits
-    code = []
-    for i in range(length):
-        if i % 2 == 0:
-            code.append(random.choice(letters))
-        else:
-            code.append(random.choice(digits))
-    return ''.join(code)
-
-
-async def get_user_by_email(db_session: AsyncSession, email: str) -> User:
-    query = select(User).filter(User.email == email)
-    result = await db_session.execute(query)
-    user = result.scalars().first()
-    return user
-
-
-def send_verification_email(email: str, code: str):
-    verification_link = f"{settings.FRONTEND_URL}/verify-email?email={email}"
+    @staticmethod
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     
-    msg = MIMEText(
-        f'Your verification code: {code}\n\n'
-        f'Or click this link to verify: {verification_link}'
-    )
-    msg['Subject'] = 'Email Verification Code'
-    msg['From'] = settings.EMAIL_FROM
-    msg['To'] = email
+    @staticmethod
+    def _create_token(data: dict, token_type: str, secret_key: str,
+                    default_expire: timedelta,  expires_delta: timedelta | None = None) -> str:
+        expire = datetime.now(timezone.utc) + (expires_delta if expires_delta else default_expire
+        )
+        payload = {
+            **data,
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "jti": str(uuid.uuid4()),
+            "sub": str(data.get("email")),
+            "role": str(data["role"].value) if isinstance(data["role"], Role) else str(data["role"]),
+            "token_type": token_type,
+        }
+        return jwt.encode(payload, secret_key, algorithm=settings.ALGORITHM)
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-        server.starttls()
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(settings.EMAIL_FROM, [email], msg.as_string())
+    @staticmethod
+    def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+        return SecurityService._create_token(
+            data=data,
+            token_type="access",
+            secret_key=settings.ACCESS_SECRET_KEY,
+            default_expire=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+            expires_delta=expires_delta
+        )
 
-
-async def create_user(db_session: AsyncSession, email: str, password: str, role: str) -> User:
-    hashed_password = get_password_hash(password)
-    verification_code = generate_verification_code()
-    code_expires = datetime.now(timezone.utc) + timedelta(days=1)
+    @staticmethod
+    def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
+        return SecurityService._create_token(
+            data=data,
+            token_type="refresh",
+            secret_key=settings.REFRESH_SECRET_KEY,
+            default_expire=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            expires_delta=expires_delta
+        )
     
-    new_user = User(
-        email=email,
-        hashed_password=hashed_password,
-        role=role,
-        verification_code=verification_code,
-        verification_code_expires=code_expires,
-        disabled=True,
-        is_verified=False
-    )
-    db_session.add(new_user)
-    await db_session.commit()
-    await db_session.refresh(new_user)
-    
-    send_verification_email(email, verification_code)
-    return new_user
-
-
-async def verify_email_with_code(db_session: AsyncSession, code: str) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid verification code",
-    )
-    
-    query = select(User).filter(User.verification_code == code)
-    result = await db_session.execute(query)
-    user = result.scalars().first()
-    
-    if user is None:
-        raise credentials_exception
-    
-    if datetime.now(timezone.utc) > user.verification_code_expires:
-        raise HTTPException(status_code=400, detail="Verification code expired")
-    
-    if user.is_verified:
-        raise HTTPException(status_code=400, detail="Email already verified")
-    
-    user.is_verified = True
-    user.disabled = False
-    user.verification_code = None
-    user.verification_code_expires = None
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-    
-    return user
-
-
-async def resend_verification_code(db_session: AsyncSession, email: str) -> User:
-    user = await get_user_by_email(db_session, email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if user.is_verified:
-        raise HTTPException(status_code=400, detail="Email already verified")
-    
-    verification_code = generate_verification_code()
-    code_expires = datetime.now(timezone.utc) + timedelta(days=1)
-    
-    user.verification_code = verification_code
-    user.verification_code_expires = code_expires
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-    
-    send_verification_email(email, verification_code)
-    return user
-
-
-async def authenticate_user(db_session: AsyncSession, email: str, password: str):
-    db_user = await get_user_by_email(db_session, email)
-    if not db_user:
-        return False
-    if not verify_password(password, db_user.hashed_password):
-        return False
-    return db_user
-
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    @staticmethod
+    def _decode_token(token: str, secret_key: str, expected_token_type: str | None = None, expected_roles: list[Role] | None = None) -> dict:
+        try:
+            payload = jwt.decode(token, secret_key, algorithms=[settings.ALGORITHM])
+            required_claims = {
+                'exp': (lambda x: x is not None, "Token has no expiration"),
+                'iat': (lambda x: x is not None, "Token has no issued at time"),
+                'jti': (lambda x: x is not None, "Token has no JWT ID"),
+                'sub': (lambda x: x is not None, "Token has no subject"),
+                'role': (lambda x: x is not None, "Token has no role"),
+                'token_type': (lambda x: x is not None, "Token has no type"),
+            }
         
-    scopes = []
-    if data.get("role") in [Role.admin, Role.superadmin]:
-        scopes = ["admin"]
-    else:
-        scopes = ["user"]
-    
-    to_encode.update({
-        "exp": expire,
-        "role": data.get("role"),
-        "scopes": scopes
-    })
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-
-def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.REFRESH_SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-
-async def get_current_user(
-    security_scopes: SecurityScopes,
-    token: str = Depends(oauth2_user_scheme),
-    db_session: AsyncSession = Depends(get_async_session)
-) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("email")
-        if email is None:
-            raise credentials_exception
+            for claim, (validator, error_msg) in required_claims.items():
+                if not validator(payload.get(claim)):
+                    raise InvalidTokenError(error_msg)
+            
+            if datetime.now(timezone.utc) > datetime.fromtimestamp(payload['exp'], timezone.utc):
+                raise ExpiredSignatureError("Token expired")
+            
+            if expected_token_type and payload['token_type'] != expected_token_type:
+                raise InvalidTokenError(f"Expected {expected_token_type} token, got {payload['token_type']}")
+            
+            if expected_roles:
+                try:
+                    token_role = Role(payload['role']) if not isinstance(payload['role'], Role) else payload['role']
+                    if token_role not in expected_roles:
+                        raise InvalidTokenError(f"Role {token_role} not in allowed roles")
+                except ValueError:
+                    raise InvalidTokenError("Invalid role in token")
         
-        token_scopes = payload.get("scopes", [])
-        for scope in security_scopes.scopes:
-            if scope not in token_scopes:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not enough permissions",
-                )
-    except InvalidTokenError:
-        raise credentials_exception
+            return payload
     
-    user = await get_user_by_email(db_session, email)
-    if user is None:
-        raise credentials_exception
-    return user
-
-
-async def verify_refresh_token(token: str, db_session: AsyncSession) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, settings.REFRESH_SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("email")
-        if email is None:
-            raise credentials_exception
-    except InvalidTokenError:
-        raise credentials_exception
-
-    user = await get_user_by_email(db_session, email)
-    if user is None:
-        raise credentials_exception
-    return user
-
-
-async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)]
-) -> User:
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
-
-
-async def request_password_reset(db_session: AsyncSession, user: User):
-    reset_token = create_access_token(data={"email": user.email}, expires_delta=timedelta(hours=settings.RESET_TOKEN_EXPIRE_MINUTES))
-    user.reset_token = reset_token
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-    send_reset_email(user.email, reset_token)
-
-
-async def reset_password(db_session: AsyncSession, token: str, new_password: str) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("email")
-        if email is None:
-            raise credentials_exception
-    except InvalidTokenError:
-        raise credentials_exception
-    user = await get_user_by_email(db_session, email)
-    if user is None:
-        raise credentials_exception
-    if user.reset_token != token:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-
-    user.hashed_password = get_password_hash(new_password)
-    user.reset_token = None
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-    
-    return user
-
-def send_reset_email(email: str, token: str):
-
-    reset_link = f"http://127.0.0.1:8000/docs#/default/reset_password_endpoint_reset_password_post?token={token}"
-
-    msg = MIMEText(f'Use this link to reset your password: {reset_link}')
-    msg['Subject'] = 'Password Reset Request'
-    msg['From'] = settings.EMAIL_FROM
-    msg['To'] = email
-
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-        server.starttls()
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(settings.EMAIL_FROM, [email], msg.as_string())
-
-
-class RoleChecker:
-    def __init__(self, allowed_roles: List[Role]):
-        self.allowed_roles = allowed_roles
-
-    def __call__(self, user: User = Depends(get_current_active_user)):
-        if user.role not in self.allowed_roles:
+        except (ExpiredSignatureError, InvalidTokenError) as e:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
-                detail="Operation not permitted for your role"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=str(e),
+                headers={"WWW-Authenticate": "Bearer"},
             )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Could not validate credentials: {str(e)}",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    @staticmethod
+    def decode_access_token(token: str, expected_roles: list[Role] | None = None) -> dict:
+        return SecurityService._decode_token(
+            token, 
+            settings.ACCESS_SECRET_KEY,
+            expected_token_type="access",
+            expected_roles=expected_roles
+        )
+
+    @staticmethod
+    def decode_refresh_token(token: str) -> dict:
+        return SecurityService._decode_token(
+            token, 
+            settings.REFRESH_SECRET_KEY,
+            expected_token_type="refresh"
+        )
+    
+class EmailService:
+    @staticmethod
+    async def send_email(to: str, subject: str, body: str, is_html: bool = False):
+        try:
+            if not all([
+                settings.SMTP_HOST,
+                settings.SMTP_PORT,
+                settings.SMTP_USERNAME,
+                settings.SMTP_PASSWORD
+                ]):
+                    return False
+            
+            message = MIMEMultipart()
+            message["From"] = settings.SMTP_USERNAME
+            message["To"] = to
+            message["Subject"] = subject
+            message.attach(MIMEText(body, "html" if is_html else "plain"))
+
+            await aiosmtplib.send(
+                message,
+                username=settings.SMTP_USERNAME,
+                password=settings.SMTP_PASSWORD,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                use_tls=settings.USE_TLS,
+                start_tls=settings.START_TLS,
+                timeout=10
+            )
+            print(f"Email sent successfully to {to}")
+            return True
+        
+        except Exception as e:
+            print(f"Failed to send email: {str(e)}")
+            return False
+    
+    @staticmethod
+    async def send_verification_email(db: AsyncSession, user: User):
+        token = await EmailTokenService.create_verification_token(db, user.id)
+        
+        subject = "Подтверждение email"
+        verification_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+        body = f"Перейдите по ссылке для подтверждения: {verification_url}"
+        
+        return await EmailService.send_email(
+            to=user.email,
+            subject=subject,
+            body=body
+        )
+    
+    @staticmethod
+    async def send_password_reset_email(db: AsyncSession, email: str) -> bool:
+        user = await AuthService.get_user_by_email(db, email)
+        if not user:
+            return False
+            
+        token = await EmailTokenService.create_password_reset_token(db, user.id)
+        
+        subject = "Сброс пароля"
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token.token}"
+        body = f"Для сброса пароля перейдите по ссылке: {reset_url}"
+        
+        return await EmailService.send_email(
+            to=user.email,
+            subject=subject,
+            body=body
+        )
+
+class EmailTokenService:
+    @staticmethod
+    async def create_verification_token(db: AsyncSession, user_id: int) -> VerificationToken:
+        await db.execute(
+            delete(VerificationToken)
+            .where(VerificationToken.user_id == user_id)
+        )
+        token = VerificationToken(
+            token=str(uuid.uuid4()),
+            user_id=user_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.VERIFICATION_TOKEN_EXPIRE_HOURS),
+            is_used=False
+        )
+        
+        db.add(token)
+        await db.commit()
+        await db.refresh(token)
+        return token
+    
+    @staticmethod
+    async def create_password_reset_token(db: AsyncSession, user_id: int) -> PasswordResetToken:
+        token = PasswordResetToken(
+            token=str(uuid.uuid4()),
+            user_id=user_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+            is_used=False
+        )
+        
+        db.add(token)
+        await db.commit()
+        await db.refresh(token)
+        return token
+
+    @staticmethod
+    async def verify_token(db: AsyncSession, token: str, token_type: str) -> bool:
+        if token_type == 'verification':
+            result = await db.execute(
+                select(VerificationToken)
+                .where(
+                    VerificationToken.token == token,
+                    VerificationToken.expires_at > datetime.now(timezone.utc),
+                    VerificationToken.is_used == False
+                )
+            )
+            return result.scalars().first() is not None
+        
+        elif token_type == 'password_reset':
+            result = await db.execute(
+                select(PasswordResetToken)
+                .where(
+                    PasswordResetToken.token == token,
+                    PasswordResetToken.expires_at > datetime.now(timezone.utc),
+                    PasswordResetToken.is_used == False
+                )
+            )
+            return result.scalars().first() is not None
+        
+        return False
+    
+    @staticmethod
+    async def mark_token_as_used(db: AsyncSession, token: str, token_type: str):
+        if token_type == 'verification':
+            await db.execute(
+                update(VerificationToken)
+                .where(VerificationToken.token == token)
+                .values(is_used=True)
+            )
+        elif token_type == 'password_reset':
+            await db.execute(
+                update(PasswordResetToken)
+                .where(PasswordResetToken.token == token)
+                .values(is_used=True)
+            )
+        
+        await db.commit()
+
+
+class AuthService:
+    @staticmethod
+    async def get_user_by_email(db: AsyncSession, email: str) -> User:
+        result = await db.execute(select(User).filter(User.email == email))
+        return result.scalars().first()
+    
+    @staticmethod
+    async def authenticate_user(db: AsyncSession, email: str, password: str):
+        user = await AuthService.get_user_by_email(db, email)
+        if not user:
+            return False
+        if not SecurityService.verify_password(password, user.hashed_password):
+            return False
         return user
     
-
-allow_superadmin = RoleChecker([Role.superadmin])
-allow_admin = RoleChecker([Role.superadmin, Role.admin])
-allow_teacher = RoleChecker([Role.superadmin, Role.admin, Role.teacher])
-allow_student = RoleChecker([Role.superadmin, Role.admin, Role.teacher, Role.student])
-
-
-async def get_user_for_role_assignment(
-    email: str,
-    current_user: User = Depends(get_current_active_user),
-    db_session: AsyncSession = Depends(get_async_session)
+    @staticmethod
+    async def get_current_user(
+        token: Annotated[str, Depends(oauth2_scheme)],
+        db: AsyncSession = Depends(get_async_session),
+        required_roles: list[Role] | None = None,
 ) -> User:
-    if current_user.role != Role.superadmin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only superadmin can assign admin roles"
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    user = await get_user_by_email(db_session, email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+        try:
+            payload = SecurityService.decode_access_token(token)
+            if not all(key in payload for key in ['sub', 'role', 'token_type']):
+                raise InvalidTokenError("Missing required token fields")
+                
+            if payload['token_type'] != 'access':
+                raise InvalidTokenError("Invalid token type")
+            
+            if required_roles and Role(payload['role']) not in required_roles:
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+            
+            user = await AuthService.get_user_by_email(db, email=payload['sub'])
+            if user is None:
+                raise credentials_exception
+                
+            return user
+        except HTTPException:
+            raise
+        except Exception:
+            raise credentials_exception
+    
+    @staticmethod
+    async def get_current_active_user(
+        current_user: Annotated[UserInDB, Depends(get_current_user)]
+    ):
+        if current_user.disabled:
+            raise HTTPException(status_code=400, detail="Inactive user")
+        return current_user
+    
+    @staticmethod
+    async def create_user(db: AsyncSession, user_data: UserCreate):
+        existing_user = await AuthService.get_user_by_email(db, user_data.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        hashed_password = SecurityService.get_password_hash(user_data.password)
+        user = User(
+            email=user_data.email,
+            hashed_password=hashed_password,
+            role=user_data.role,
+            disabled=True
+        )
+        
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    
+        await EmailService.send_verification_email(db, user)
+
+        return user
+
+class RoleChecker:
+    def __init__(self, allowed_roles: list[Role]):
+        self.allowed_roles = allowed_roles
+
+    async def __call__(self, current_user: User = Depends(AuthService.get_current_active_user)):
+        if current_user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Operation not permitted for your role"
+            )
+        return current_user
+    
+allow_superadmin = RoleChecker([Role.superadmin, Role.admin, Role.teacher, Role.student])
+allow_admin = RoleChecker([Role.admin, Role.teacher, Role.student])
+allow_teacher = RoleChecker([Role.teacher])
+allow_student = RoleChecker([Role.student])

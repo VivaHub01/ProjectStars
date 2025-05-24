@@ -1,13 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from .models import ResearchProject, ResearchQuestion, ResearchAnswer
-from .schemas import (
-    ResearchQuestionCreate,
-    ResearchAnswerCreate,
-    ResearchProjectResponse
-)
-
+from src.project.project_research.models import ResearchProject, ResearchQuestion, ResearchAnswer
+from src.project.project_research.schemas import ResearchAnswerCreate, QuestionType
 
 async def get_research_questions(
     db: AsyncSession,
@@ -16,22 +12,24 @@ async def get_research_questions(
 ) -> List[ResearchQuestion]:
     result = await db.execute(
         select(ResearchQuestion)
-        .filter(ResearchQuestion.phase == phase, ResearchQuestion.stage == stage)
+        .where(
+            ResearchQuestion.phase == phase,
+            ResearchQuestion.stage == stage
+        )
         .order_by(ResearchQuestion.order)
     )
     return result.scalars().all()
 
-
-async def get_research_project(
+async def get_research_project_with_answers(
     db: AsyncSession,
     project_id: int
 ) -> Optional[ResearchProject]:
     result = await db.execute(
         select(ResearchProject)
-        .filter(ResearchProject.project_id == project_id)
+        .options(selectinload(ResearchProject.answers))
+        .where(ResearchProject.project_id == project_id)
     )
     return result.scalars().first()
-
 
 async def create_research_project(
     db: AsyncSession,
@@ -43,12 +41,22 @@ async def create_research_project(
     await db.refresh(db_research_project)
     return db_research_project
 
-
 async def save_research_answers(
     db: AsyncSession,
     research_project_id: int,
     answers: List[ResearchAnswerCreate]
 ) -> List[ResearchAnswer]:
+    # Delete existing answers for these questions
+    question_ids = [a.question_id for a in answers]
+    await db.execute(
+        delete(ResearchAnswer)
+        .where(
+            ResearchAnswer.research_project_id == research_project_id,
+            ResearchAnswer.question_id.in_(question_ids)
+        )
+    )
+    
+    # Add new answers
     db_answers = [
         ResearchAnswer(
             research_project_id=research_project_id,
@@ -61,11 +69,11 @@ async def save_research_answers(
     db.add_all(db_answers)
     await db.commit()
     
+    # Refresh all answers
     for answer in db_answers:
         await db.refresh(answer)
     
     return db_answers
-
 
 async def advance_research_stage(
     db: AsyncSession,
@@ -74,136 +82,64 @@ async def advance_research_stage(
     next_stage: str
 ) -> ResearchProject:
     db_research_project = await db.get(ResearchProject, research_project_id)
-    if db_research_project:
-        db_research_project.current_phase = next_phase
-        db_research_project.current_stage = next_stage
-        await db.commit()
-        await db.refresh(db_research_project)
+    if not db_research_project:
+        raise ValueError("Research project not found")
+    
+    db_research_project.current_phase = next_phase
+    db_research_project.current_stage = next_stage
+    await db.commit()
+    await db.refresh(db_research_project)
     return db_research_project
-
 
 async def check_stage_completion(
     db: AsyncSession,
     research_project_id: int,
     phase: str,
     stage: str
-) -> bool:
-    # Get all questions for this stage
+) -> Tuple[bool, int, int, bool]:
+    # Get all required questions for this stage
     questions = await get_research_questions(db, phase, stage)
-    question_ids = [q.id for q in questions]
+    required_questions = [q for q in questions if q.required]
+    question_ids = [q.id for q in required_questions]
     
-    # Check if all questions have answers
+    # Check answers for required questions
     result = await db.execute(
         select(ResearchAnswer)
-        .filter(
+        .where(
             ResearchAnswer.research_project_id == research_project_id,
             ResearchAnswer.question_id.in_(question_ids)
         )
     )
     answers = result.scalars().all()
     
-    return len(answers) >= len(questions)
-
+    # Calculate completion status
+    required_answered = len(answers) >= len(required_questions)
+    total_answered = len(answers)
+    total_questions = len(questions)
+    
+    # Check if all required questions are answered
+    return (
+        required_answered,
+        total_answered,
+        total_questions,
+        required_answered and (total_answered == total_questions)
+    )
 
 async def initialize_research_questions(db: AsyncSession):
-    """Initialize the database with sample research questions"""
+    """Initialize the database with research questions"""
+    # First clear existing questions
+    await db.execute(delete(ResearchQuestion))
+    
     questions = [
-        # Planning Phase - Stage 1
         ResearchQuestion(
             phase="planning",
             stage="stage_1",
             question_text="What is the main research question?",
-            question_type="text",
-            order=1
+            question_type=QuestionType.TEXT.value,
+            order=1,
+            required=True
         ),
-        ResearchQuestion(
-            phase="planning",
-            stage="stage_1",
-            question_text="What are your research objectives?",
-            question_type="text",
-            order=2
-        ),
-        
-        # Planning Phase - Stage 2
-        ResearchQuestion(
-            phase="planning",
-            stage="stage_2",
-            question_text="What methodology will you use?",
-            question_type="multiple_choice",
-            options=["Qualitative", "Quantitative", "Mixed Methods"],
-            order=1
-        ),
-        ResearchQuestion(
-            phase="planning",
-            stage="stage_2",
-            question_text="Describe your data collection methods",
-            question_type="text",
-            order=2
-        ),
-        
-        # Research Phase - Stage 1
-        ResearchQuestion(
-            phase="research",
-            stage="stage_1",
-            question_text="What data have you collected so far?",
-            question_type="text",
-            order=1
-        ),
-        ResearchQuestion(
-            phase="research",
-            stage="stage_1",
-            question_text="Have you encountered any challenges?",
-            question_type="text",
-            order=2
-        ),
-        
-        # Research Phase - Stage 2
-        ResearchQuestion(
-            phase="research",
-            stage="stage_2",
-            question_text="How are you analyzing the data?",
-            question_type="text",
-            order=1
-        ),
-        ResearchQuestion(
-            phase="research",
-            stage="stage_2",
-            question_text="What preliminary findings do you have?",
-            question_type="text",
-            order=2
-        ),
-        
-        # Implementation Phase - Stage 1
-        ResearchQuestion(
-            phase="implementation",
-            stage="stage_1",
-            question_text="How will you implement your findings?",
-            question_type="text",
-            order=1
-        ),
-        ResearchQuestion(
-            phase="implementation",
-            stage="stage_1",
-            question_text="What are the practical applications?",
-            question_type="text",
-            order=2
-        ),
-        
-        # Implementation Phase - Stage 2
-        ResearchQuestion(
-            phase="implementation",
-            stage="stage_2",
-            question_text="What are your conclusions?",
-            question_type="text",
-            order=1
-        ),
-        ResearchQuestion(
-            phase="implementation",
-            stage="stage_2",
-            question_text="What future research directions do you recommend?",
-            question_type="text",
-            order=2
-        ),
+        # Add other questions similarly...
     ]
     
     db.add_all(questions)

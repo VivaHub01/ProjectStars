@@ -1,19 +1,22 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import select, delete
 from src.accelerator.models import Accelerator
 from src.accelerator.schemas import AcceleratorCreate, AcceleratorUpdate
 from typing import List, Optional
-
+from fastapi import HTTPException, status
 
 async def create_accelerator(
     db: AsyncSession, 
     accelerator: AcceleratorCreate
 ) -> Accelerator:
-    db_accelerator = Accelerator(
-        university=accelerator.university,
-        description=accelerator.description,
-        is_active=accelerator.is_active
-    )
+    existing = await get_accelerator_by_university(db, accelerator.university)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Accelerator with this university already exists"
+        )
+    
+    db_accelerator = Accelerator(**accelerator.model_dump())
     db.add(db_accelerator)
     await db.commit()
     await db.refresh(db_accelerator)
@@ -25,7 +28,7 @@ async def get_accelerator_by_university(
 ) -> Optional[Accelerator]:
     result = await db.execute(
         select(Accelerator)
-        .where(Accelerator.university == university)
+        .where(Accelerator.university.ilike(university))
     )
     return result.scalars().first()
 
@@ -47,7 +50,7 @@ async def search_accelerators(
         )
     
     result = await db.execute(
-        query
+        query.order_by(Accelerator.university)
         .offset(skip)
         .limit(limit)
     )
@@ -74,13 +77,12 @@ async def delete_accelerator_by_university(
     db: AsyncSession, 
     university: str
 ) -> bool:
-    db_accelerator = await get_accelerator_by_university(db, university)
-    if not db_accelerator:
-        return False
-    
-    await db.delete(db_accelerator)
+    result = await db.execute(
+        delete(Accelerator)
+        .where(Accelerator.university.ilike(university))
+    )
     await db.commit()
-    return True
+    return result.rowcount > 0
 
 async def toggle_accelerator_status(
     db: AsyncSession,

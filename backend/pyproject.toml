@@ -16,9 +16,10 @@ pydantic-settings = "^2.8.1"
 pyjwt = {extras = ["crypto"], version = "^2.10.1"}
 alembic = "^1.15.2"
 asyncpg = "^0.30.0"
-passlib = {extras = ["bcrypt"], version = "^1.7.4"}
-secure-smtplib = "^0.1.1"
 phonenumbers = "^9.0.2"
+bcrypt = "^4.3.0"
+aiosmtplib = "^4.0.1"
+email-validator = "^2.2.0"
 
 
 [build-system]

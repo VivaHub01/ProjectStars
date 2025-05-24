@@ -1,24 +1,20 @@
 from pydantic import BaseModel, field_validator
 from enum import Enum
 
-
 class ProjectType(str, Enum):
     APPLIED = "applied"
     RESEARCH = "research"
     BUSINESS = "business"
 
-# изменить в будущем
 STAGE_MAPPING = {
-    ProjectType.APPLIED: ["requirement_analysis", "design", "implementation", "testing", "deployment"], # жц
-    ProjectType.RESEARCH: ["planning", "research", "implementation"], #  фазы
-    ProjectType.BUSINESS: ["market_research", "business_plan", "funding", "launch", "scaling"], # этапы
+    ProjectType.APPLIED: ["requirement_analysis", "design", "implementation", "testing", "deployment"],
+    ProjectType.RESEARCH: ["planning", "research", "implementation"],
+    ProjectType.BUSINESS: ["market_research", "business_plan", "funding", "launch", "scaling"],
 }
-
 
 class ProjectBase(BaseModel):
     name: str
     description: str | None = None
-
 
 class ProjectCreate(ProjectBase):
     type: ProjectType
@@ -36,8 +32,9 @@ class ProjectCreate(ProjectBase):
             raise ValueError(f"Invalid stage for project type {values['type']}. Allowed: {allowed_stages}")
         return v
 
-
 class ProjectResponse(ProjectBase):
     id: int
     type: ProjectType
     stage: str
+    user_id: int
+    accelerator_id: int | None = None

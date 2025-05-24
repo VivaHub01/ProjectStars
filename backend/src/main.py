@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.db.database import get_async_session
-from src.auth.admin.routes import admin_router
 from src.auth.routes import auth_router
 from src.user.routes import user_router
 from src.accelerator.routes import accelerator_router
@@ -28,7 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(accelerator_router)

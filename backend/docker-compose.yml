@@ -21,40 +21,33 @@ services:
       - app-network
 
   backend:
+    container_name: backend
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: backend
-    ports:
-      - "${APP_PORT}:${APP_PORT}"
     environment:
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
+      DB_HOST: postgres
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      EMAIL_FROM: ${EMAIL_FROM}
+      DB_PORT: ${DB_PORT}
       APP_PORT: ${APP_PORT}
-      APP_HOST: ${APP_HOST}
-      FRONTEND_URL: ${FRONTEND_URL}
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - app-network
-    command: >
-      sh -c "python -c 'import time; time.sleep(5)' &&
-      alembic upgrade head &&
-      poetry run uvicorn src.main:app --host ${APP_HOST} --port ${APP_PORT}"
-
-volumes:
-  postgres_data:
+    volumes:
+      - .:/app
 
 networks:
   app-network:
+    driver: bridge
     name: app-network
     external: true
+
+
+volumes:
+  postgres_data:
